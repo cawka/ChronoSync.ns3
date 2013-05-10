@@ -29,7 +29,7 @@ using namespace boost;
 using namespace std;
 using namespace ns3;
 
-INIT_LOGGER ("Scheduler");
+INIT_LOGGER ("sync.Scheduler");
 
 namespace Sync {
 
@@ -81,7 +81,7 @@ Scheduler::cancel (uint32_t label)
        i != eventsForLabel.end ();
        i++)
     {
-      i->Cancel ();
+      Simulator::Remove (*i);
     }
 
   eventsForLabel.clear ();

@@ -41,7 +41,7 @@ def configure(conf):
 
     conf.check_ns3_modules(REQUIRED_NS3_MODULES, mandatory = True)
 
-    conf.check_boost(lib='system iostreams thread')
+    conf.check_boost(lib='system iostreams test')
     conf.define ('NS3_LOG_ENABLE', 1)
 
     conf.load('protoc')
@@ -52,6 +52,15 @@ def build (bld):
         features=['cxx', 'cxxshlib'],
         source =  bld.path.ant_glob (['ns3/*.cc', 'src/*.cc', 'src/*.proto']),
         use = 'BOOST BOOST_IOSTREAMS SSL PROTOBUF ' + ' '.join (['ns3_'+dep for dep in REQUIRED_NS3_MODULES]).upper (),
+        includes = ['src', 'ns3'],
+        )
+
+    # Unit tests
+    unittests = bld.program (
+        target="unit-tests",
+        source = bld.path.ant_glob(['test-ns3/*.cc']),
+        features=['cxx', 'cxxprogram'],
+        use = 'BOOST_TEST ChronoSync.ns3',
         includes = ['src', 'ns3'],
         )
 

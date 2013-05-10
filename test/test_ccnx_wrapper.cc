@@ -25,6 +25,7 @@
 using boost::test_tools::output_test_stream;
 
 #include <boost/make_shared.hpp>
+#include <boost/bind.hpp>
 
 #include "sync-ccnx-wrapper.h"
 
@@ -56,6 +57,8 @@ struct TestStruct {
     memcpy(num, buf, len);
   }
 };
+
+#ifndef NS3_MODULE
 
 BOOST_AUTO_TEST_CASE (CcnxWrapperTest)
 {
@@ -106,4 +109,4 @@ BOOST_AUTO_TEST_CASE (CcnxWrapperTest)
   }
 }
 
-
+#endif

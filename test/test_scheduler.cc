@@ -20,6 +20,8 @@
  *	   Alexander Afanasyev <alexander.afanasyev@ucla.edu>
  */
 
+#ifndef NS3_MODULE
+
 #include <boost/test/unit_test.hpp>
 #include <boost/test/output_test_stream.hpp> 
 #include <map>
@@ -174,5 +176,7 @@ BOOST_AUTO_TEST_CASE (SyncLogicSchedulerTest)
   
   BOOST_CHECK_NO_THROW (delete logic);
 }
+
+#endif
 
 #endif
