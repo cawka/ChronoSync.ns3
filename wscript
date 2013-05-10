@@ -50,7 +50,9 @@ def build (bld):
     libsync = bld.shlib (
         target = "ChronoSync.ns3",
         features=['cxx', 'cxxshlib'],
-        source =  bld.path.ant_glob (['ns3/*.cc', 'src/*.cc', 'src/*.proto']),
+        source =  bld.path.ant_glob (['ns3/*.cc', 
+                                      'src/*.cc', 
+                                      'src/*.proto']),
         use = 'BOOST BOOST_IOSTREAMS SSL PROTOBUF ' + ' '.join (['ns3_'+dep for dep in REQUIRED_NS3_MODULES]).upper (),
         includes = ['src', 'ns3'],
         )
@@ -62,7 +64,22 @@ def build (bld):
         features=['cxx', 'cxxprogram'],
         use = 'BOOST_TEST ChronoSync.ns3',
         includes = ['src', 'ns3'],
+        install_path = None
         )
+
+    headers = bld.path.ant_glob(['src/*.h', 
+                                 'ns3/*.h']) + bld.path.get_bld ().ant_glob (['src/*.h'])
+
+    bld.install_files ("%s/ChronoSync.ns3" % bld.env['INCLUDEDIR'], headers)
+
+    bld (
+        source='ChronoSync.ns3.pc.in',
+        install_path = '${LIBDIR}/pkgconfig',
+        PREFIX       = bld.env['PREFIX'],
+        INCLUDEDIR   = "%s/ChronoSync.ns3" % bld.env['INCLUDEDIR'],
+        VERSION      = VERSION,
+        )
+
 
 @Configure.conf
 def add_supported_cxxflags(self, cxxflags):
