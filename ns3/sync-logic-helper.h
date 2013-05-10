@@ -28,6 +28,7 @@
 #include "ns3/ptr.h"
 
 #include <boost/function.hpp>
+#include "sync-logic.h"
 
 namespace Sync 
 {
@@ -41,7 +42,7 @@ class SeqNo;
 class SyncLogicHelper
 {        
 public:
-  typedef boost::function< void ( const std::string &/*prefix*/, const SeqNo &/*newSeq*/, const SeqNo &/*oldSeq*/ ) > LogicUpdateCallback;
+  typedef boost::function< void ( const std::vector<MissingDataInfo> & ) > LogicUpdateCallback;
   typedef boost::function< void ( const std::string &/*prefix*/ ) > LogicRemoveCallback;
 
   /**

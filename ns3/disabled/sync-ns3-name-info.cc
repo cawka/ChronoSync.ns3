@@ -23,7 +23,7 @@
 #ifdef NS3_MODULE
 
 #include "sync-ns3-name-info.h"
-#include "ns3/ccnx-name-components.h"
+#include "ns3/ndn-name.h"
 
 #include <boost/foreach.hpp>
 #include <boost/lexical_cast.hpp>
@@ -36,7 +36,7 @@ using namespace boost;
 namespace Sync {
 
 NameInfoConstPtr
-Ns3NameInfo::FindOrCreate (ns3::Ptr<const ns3::CcnxNameComponents> name)
+Ns3NameInfo::FindOrCreate (ns3::Ptr<const ns3::ndn::Name> name)
 {
   mutex::scoped_lock namesLock (m_namesMutex);
   
@@ -64,7 +64,7 @@ Ns3NameInfo::FindOrCreate (ns3::Ptr<const ns3::CcnxNameComponents> name)
 }
 
 
-Ns3NameInfo::Ns3NameInfo (ns3::Ptr<const ns3::CcnxNameComponents> name)
+Ns3NameInfo::Ns3NameInfo (ns3::Ptr<const ns3::ndn::Name> name)
   : m_name (name)
 {
   m_id = m_ids ++; // set ID for a newly inserted element
@@ -105,7 +105,7 @@ Ns3NameInfo::operator < (const NameInfo &info) const
 }
 
 Digest &
-operator << (Digest &digest, const ns3::CcnxNameComponents &name)
+operator << (Digest &digest, const ns3::ndn::Name &name)
 {
   BOOST_FOREACH (const std::string &component, name.GetComponents ())
     {

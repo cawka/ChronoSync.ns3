@@ -22,21 +22,19 @@
 
 #include "sync-ccnx-wrapper.h"
 #include "sync-log.h"
+
 #include <boost/throw_exception.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/lambda/lambda.hpp>
 #include <boost/lambda/bind.hpp>
-
 namespace ll = boost::lambda;
 
-#include "../evaluation/type-tag.h"
-
-#include <ns3/ccnx-name-components.h>
-#include <ns3/ccnx-interest-header.h>
-#include <ns3/ccnx-content-object-header.h>
-#include <ns3/ccnx-face.h>
 #include <ns3/packet.h>
-#include <ns3/ccnx-fib.h>
+
+#include <ns3/ndn-interest.h>
+#include <ns3/ndn-content-object.h>
+#include <ns3/ndn-face.h>
+#include <ns3/ndn-fib.h>
 
 typedef boost::error_info<struct tag_errmsg, std::string> errmsg_info_str;
 typedef boost::error_info<struct tag_errmsg, int> errmsg_info_int;
@@ -61,33 +59,29 @@ CcnxWrapper::~CcnxWrapper()
 void
 CcnxWrapper::StartApplication ()
 {
-  CcnxApp::StartApplication ();
+  ndn::App::StartApplication ();
 }
 
 void
 CcnxWrapper::StopApplication ()
 {
-  CcnxApp::StopApplication ();
+  ndn::App::StopApplication ();
 }
 
 int
-CcnxWrapper::publishData (const string &dataName, const string &dataBuffer, int freshness)
+CcnxWrapper::publishRawData (const std::string &name, const char *buf, size_t len, int freshness)
 {
   // NS_LOG_INFO ("Requesting Interest: \n" << interestHeader);
-  _LOG_INFO ("> Data for " << dataName);
+  _LOG_INFO ("> Data for " << name);
 
-  Ptr<CcnxNameComponents> name = Create<CcnxNameComponents> ();
-  istringstream is (dataName);
-  is >> *name;
-
-  static CcnxContentObjectTail trailer;
+  static ndn::ContentObjectTail trailer;
   
-  CcnxContentObjectHeader data;
+  ndn::ContentObject data;
   data.SetName (name);
   data.SetFreshness (Seconds (freshness));
 
-  Ptr<Packet> packet = Create<Packet> (reinterpret_cast<const uint8_t*> (dataBuffer.c_str ()), dataBuffer.size ());
-  packet->AddPacketTag (CreateObject<TypeTag> (TypeTag::DATA));
+  Ptr<Packet> packet = Create<Packet> (reinterpret_cast<const uint8_t*> (buf), len);
+  // packet->AddPacketTag (CreateObject<TypeTag> (TypeTag::DATA));
   packet->AddHeader (data);
   packet->AddTrailer (trailer);
 
@@ -98,24 +92,32 @@ CcnxWrapper::publishData (const string &dataName, const string &dataBuffer, int 
   return 0;
 }
 
-int CcnxWrapper::sendInterest (const string &strInterest, const DataCallback &dataCallback)
+
+void
+RawDataCallback2StringDataCallback (CcnxWrapper::StringDataCallback callback, std::string str, const char *buf, size_t len)
+{
+  callback (str, string (buf, len));
+}
+
+int
+CcnxWrapper::sendInterestForString (const std::string &strInterest, const StringDataCallback &strDataCallback/*, int retry*/)
+{
+  return sendInterest (strInterest, boost::bind (RawDataCallback2StringDataCallback, strDataCallback, _1, _2, _3));
+}
+
+int CcnxWrapper::sendInterest (const string &strInterest, const RawDataCallback &rawDataCallback)
 {
   // NS_LOG_INFO ("Requesting Interest: \n" << interestHeader);
   _LOG_INFO ("> Interest for " << strInterest);
+  Ptr<ndn::Name> name = Create<ndn::Name> (strInterest);
 
-  Ptr<CcnxNameComponents> name = Create<CcnxNameComponents> ();
-  istringstream is (strInterest);
-  is >> *name;
-  
-  CcnxInterestHeader interestHeader;
-  uint32_t nonce = m_rand.GetValue ();
-  _LOG_DEBUG ("Nonce: " << nonce);
-  interestHeader.SetNonce            (nonce);
-  interestHeader.SetName             (name);
+  ndn::Interest interestHeader;
+  interestHeader.SetNonce            (m_rand.GetValue ());
+  interestHeader.SetName             (*name);
   interestHeader.SetInterestLifetime (Seconds (9.9)); // really long-lived interests
 
   Ptr<Packet> packet = Create<Packet> ();
-  packet->AddPacketTag (CreateObject<TypeTag> (TypeTag::INTEREST));
+  // packet->AddPacketTag (CreateObject<TypeTag> (TypeTag::INTEREST));
   packet->AddHeader (interestHeader);
 
   // NS_LOG_DEBUG (interestHeader);
@@ -125,45 +127,38 @@ int CcnxWrapper::sendInterest (const string &strInterest, const DataCallback &da
   m_transmittedInterests (&interestHeader, this, m_face);
 
   // Record the callback
-  CcnxFilterEntryContainer<DataCallback>::type::iterator entry = m_dataCallbacks.find (*name);
+  CcnxFilterEntryContainer<RawDataCallback>::iterator entry = m_dataCallbacks.find_exact (*name);
   if (entry == m_dataCallbacks.end ())
     {
-      pair<CcnxFilterEntryContainer<DataCallback>::type::iterator, bool> status =
-        m_dataCallbacks.insert (CcnxFilterEntry<DataCallback> (name));
+      pair<CcnxFilterEntryContainer<RawDataCallback>::iterator, bool> status =
+        m_dataCallbacks.insert (*name, Create< CcnxFilterEntry<RawDataCallback> > (name));
 
       entry = status.first;
     }
-  m_dataCallbacks.modify (entry, ll::bind (&CcnxFilterEntry<DataCallback>::AddCallback, ll::_1, dataCallback));
+  entry->payload ()->AddCallback (rawDataCallback);
   
   return 0;
 }
 
 int CcnxWrapper::setInterestFilter (const string &prefix, const InterestCallback &interestCallback)
 {
-  Ptr<CcnxNameComponents> name = Create<CcnxNameComponents> ();
-  istringstream is (prefix);
-  is >> *name;
+  Ptr<ndn::Name> name = Create<ndn::Name> (prefix);
 
-  CcnxFilterEntryContainer<InterestCallback>::type::iterator entry = m_interestCallbacks.find (*name);
+  CcnxFilterEntryContainer<InterestCallback>::iterator entry = m_interestCallbacks.find_exact (*name);
   if (entry == m_interestCallbacks.end ())
     {
-      pair<CcnxFilterEntryContainer<InterestCallback>::type::iterator, bool> status =
-        m_interestCallbacks.insert (CcnxFilterEntry<InterestCallback> (name));
+      pair<CcnxFilterEntryContainer<InterestCallback>::iterator, bool> status =
+        m_interestCallbacks.insert (*name, Create < CcnxFilterEntry<InterestCallback> > (name));
 
       entry = status.first;
     }
 
-  m_interestCallbacks.modify (entry, ll::bind (&CcnxFilterEntry<InterestCallback>::AddCallback, ll::_1, interestCallback));
+  entry->payload ()->AddCallback (interestCallback);
 
   // creating actual face
-  
-  Ptr<CcnxFib> fib = GetNode ()->GetObject<CcnxFib> ();
-  CcnxFibEntryContainer::type::iterator fibEntry = fib->Add (*name, m_face, 0);
-
-  // make face green, so it will be used primarily
-  fib->m_fib.modify (fibEntry,
-                     ll::bind (&CcnxFibEntry::UpdateStatus,
-                               ll::_1, m_face, CcnxFibFaceMetric::NDN_FIB_GREEN));
+  Ptr<ndn::Fib> fib = GetNode ()->GetObject<ndn::Fib> ();
+  Ptr<ndn::fib::Entry> fibEntry = fib->Add (name, m_face, 0);
+  fibEntry->UpdateStatus (m_face, ndn::fib::FaceMetric::NDN_FIB_GREEN);
 
   return 0;
 }
@@ -171,93 +166,55 @@ int CcnxWrapper::setInterestFilter (const string &prefix, const InterestCallback
 void
 CcnxWrapper::clearInterestFilter (const std::string &prefix)
 {
-  Ptr<CcnxNameComponents> name = Create<CcnxNameComponents> ();
-  istringstream is (prefix);
-  is >> *name;
+  Ptr<ndn::Name> name = Create<ndn::Name> (prefix);
 
-  CcnxFilterEntryContainer<InterestCallback>::type::iterator entry = m_interestCallbacks.find (*name);
+  CcnxFilterEntryContainer<InterestCallback>::iterator entry = m_interestCallbacks.find_exact (*name);
   if (entry == m_interestCallbacks.end ())
     return;
 
-  m_interestCallbacks.modify (entry, ll::bind (&CcnxFilterEntry<InterestCallback>::ClearCallback, ll::_1));  
-}
-
-CcnxFilterEntryContainer<CcnxWrapper::InterestCallback>::type::iterator
-CcnxWrapper::InterestCallbackLookup (const ns3::CcnxNameComponents &name)
-{
-  CcnxFilterEntryContainer<InterestCallback>::type::iterator entry = m_interestCallbacks.end ();
-
-  // do the longest prefix match
-  for (size_t componentsCount = name.GetComponents ().size ()+1;
-       componentsCount > 0;
-       componentsCount--)
-    {
-      CcnxNameComponents subPrefix (name.GetSubComponents (componentsCount-1));
-
-      entry = m_interestCallbacks.find (subPrefix);
-      if (entry != m_interestCallbacks.end())
-        return entry;
-    }
-
-  return entry;
-}
-
-CcnxFilterEntryContainer<CcnxWrapper::DataCallback>::type::iterator
-CcnxWrapper::DataCallbackLookup (const ns3::CcnxNameComponents &name)
-{
-  CcnxFilterEntryContainer<DataCallback>::type::iterator entry = m_dataCallbacks.end ();
-
-  // do the longest prefix match
-  for (size_t componentsCount = name.GetComponents ().size ()+1;
-       componentsCount > 0;
-       componentsCount--)
-    {
-      CcnxNameComponents subPrefix (name.GetSubComponents (componentsCount-1));
-
-      entry = m_dataCallbacks.find (subPrefix);
-      if (entry != m_dataCallbacks.end())
-        return entry;
-    }
-
-  return entry;  
+  entry->payload ()->ClearCallback ();
 }
 
 void
-CcnxWrapper::OnInterest (const Ptr<const CcnxInterestHeader> &interest, Ptr<Packet> packet)
+CcnxWrapper::OnInterest (const Ptr<const ndn::Interest> &interest, Ptr<Packet> packet)
 {
-  CcnxApp::OnInterest (interest, packet);
+  ndn::App::OnInterest (interest, packet);
 
-  CcnxFilterEntryContainer<InterestCallback>::type::iterator entry = InterestCallbackLookup (interest->GetName ());
+  // the app cannot set several filters for the same prefix
+  CcnxFilterEntryContainer<InterestCallback>::iterator entry = m_interestCallbacks.longest_prefix_match (interest->GetName ());
   if (entry == m_interestCallbacks.end ())
     {
       _LOG_DEBUG ("No Interest callback set");
       return;
     }
   
-  entry->m_callback (lexical_cast<string> (interest->GetName ()));  
+  entry->payload ()->m_callback (lexical_cast<string> (interest->GetName ()));  
 }
 
 void
-CcnxWrapper::OnContentObject (const Ptr<const CcnxContentObjectHeader> &contentObject,
+CcnxWrapper::OnContentObject (const Ptr<const ndn::ContentObject> &contentObject,
                               Ptr<Packet> payload)
 {
-  CcnxApp::OnContentObject (contentObject, payload);
+  ndn::App::OnContentObject (contentObject, payload);
 
-  CcnxFilterEntryContainer<DataCallback>::type::iterator entry = DataCallbackLookup (contentObject->GetName ());
+  CcnxFilterEntryContainer<RawDataCallback>::iterator entry = m_dataCallbacks.longest_prefix_match (contentObject->GetName ());
   if (entry == m_dataCallbacks.end ())
     {
       _LOG_DEBUG ("No Data callback set");
       return;
     }
 
-  ostringstream content;
-  payload->CopyData (&content, payload->GetSize ());
+  while (entry != m_dataCallbacks.end ())
+    {
+      ostringstream content;
+      payload->CopyData (&content, payload->GetSize ());
   
-  entry->m_callback (lexical_cast<string> (contentObject->GetName ()), content.str ());
+      entry->payload ()->m_callback (lexical_cast<string> (contentObject->GetName ()), content.str ().c_str (), content.str ().size ());
   
-  // i guess it make sense to remove callback when interest is satisfied
-  m_dataCallbacks.erase (entry);
-}
+      m_dataCallbacks.erase (entry);
 
+      entry = m_dataCallbacks.longest_prefix_match (contentObject->GetName ());
+    }
+}
 
 }

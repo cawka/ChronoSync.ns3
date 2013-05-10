@@ -21,8 +21,7 @@
  */
 
 #ifdef NS3_MODULE
-#include <ns3/ccnx-pit.h>
-#include <ns3/ccnx.h>
+// #include <ns3/ccnx.h>
 #endif
 
 #include "sync-logic.h"
@@ -64,8 +63,8 @@ SyncLogic::SyncLogic (const std::string &syncPrefix,
   , m_syncInterestTable (TIME_SECONDS (m_syncInterestReexpress))
   , m_syncPrefix (syncPrefix)
   , m_onUpdate (onUpdate)
-  , m_perBranch (false)
   , m_onRemove (onRemove)
+  , m_perBranch (false)
   , m_ccnxHandle(new CcnxWrapper ())
   , m_recoveryRetransmissionInterval (m_defaultRecoveryRetransmitInterval)
 #ifndef NS3_MODULE

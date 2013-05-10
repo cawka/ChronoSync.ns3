@@ -188,14 +188,17 @@ private:
   SyncInterestTable m_syncInterestTable;
 
   std::string m_syncPrefix;
+  LogicPerBranchCallback m_onUpdateBranch;
   LogicUpdateCallback m_onUpdate;
   LogicRemoveCallback m_onRemove;
-  LogicPerBranchCallback m_onUpdateBranch;
   bool m_perBranch;
   CcnxWrapperPtr m_ccnxHandle;
 
   Scheduler m_scheduler;
 
+  static const int m_defaultRecoveryRetransmitInterval = 200; // milliseconds
+  uint32_t m_recoveryRetransmissionInterval; // milliseconds
+  
 #ifndef NS3_MODULE
   boost::mt19937 m_randomGenerator;
   boost::variate_generator<boost::mt19937&, boost::uniform_int<> > m_rangeUniformRandom;
@@ -215,9 +218,6 @@ private:
   static const int m_syncInterestReexpress = 4;
 #endif
 
-  static const int m_defaultRecoveryRetransmitInterval = 200; // milliseconds
-  uint32_t m_recoveryRetransmissionInterval; // milliseconds
-  
   enum EventLabels
     {
       DELAYED_INTEREST_PROCESSING = 1,
