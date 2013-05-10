@@ -105,19 +105,6 @@ public:
   CcnxWrapper();
   ~CcnxWrapper();
 
-  // from ndn::App
-  /**
-   * @brief Should be called after Node pointer is set to create face and start application
-   */
-  virtual void
-  StartApplication ();
-
-  /**
-   * @brief Stop application
-   */
-  virtual void
-  StopApplication ();
-
   /**
    * @brief send Interest; need to grab lock m_mutex first
    *
@@ -173,6 +160,15 @@ public:
   virtual void
   OnContentObject (const ns3::Ptr<const ns3::ndn::ContentObject> &contentObject,
                    ns3::Ptr<ns3::Packet> payload);
+
+
+public:
+  // inherited from Application base class.
+  virtual void
+  StartApplication ();    // Called at time specified by Start
+
+  virtual void
+  StopApplication ();     // Called at time specified by Stop
 
 private:
   ns3::UniformVariable m_rand; // nonce generator

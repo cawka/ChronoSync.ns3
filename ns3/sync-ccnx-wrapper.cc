@@ -72,7 +72,7 @@ int
 CcnxWrapper::publishRawData (const std::string &name, const char *buf, size_t len, int freshness)
 {
   // NS_LOG_INFO ("Requesting Interest: \n" << interestHeader);
-  _LOG_INFO ("> Data for " << name);
+  _LOG_INFO (">> publishRawData " << name);
 
   static ndn::ContentObjectTail trailer;
   
@@ -108,7 +108,7 @@ CcnxWrapper::sendInterestForString (const std::string &strInterest, const String
 int CcnxWrapper::sendInterest (const string &strInterest, const RawDataCallback &rawDataCallback)
 {
   // NS_LOG_INFO ("Requesting Interest: \n" << interestHeader);
-  _LOG_INFO ("> Interest for " << strInterest);
+  _LOG_INFO (">> I " << strInterest);
   Ptr<ndn::Name> name = Create<ndn::Name> (strInterest);
 
   ndn::Interest interestHeader;
@@ -122,10 +122,6 @@ int CcnxWrapper::sendInterest (const string &strInterest, const RawDataCallback 
 
   // NS_LOG_DEBUG (interestHeader);
   
-  m_protocolHandler (packet);
-
-  m_transmittedInterests (&interestHeader, this, m_face);
-
   // Record the callback
   CcnxFilterEntryContainer<RawDataCallback>::iterator entry = m_dataCallbacks.find_exact (*name);
   if (entry == m_dataCallbacks.end ())
@@ -136,12 +132,16 @@ int CcnxWrapper::sendInterest (const string &strInterest, const RawDataCallback 
       entry = status.first;
     }
   entry->payload ()->AddCallback (rawDataCallback);
+
+  m_protocolHandler (packet);
+  m_transmittedInterests (&interestHeader, this, m_face);
   
   return 0;
 }
 
 int CcnxWrapper::setInterestFilter (const string &prefix, const InterestCallback &interestCallback)
 {
+  NS_LOG_DEBUG ("== setInterestFilter " << prefix << " (" << GetNode ()->GetId () << ")");
   Ptr<ndn::Name> name = Create<ndn::Name> (prefix);
 
   CcnxFilterEntryContainer<InterestCallback>::iterator entry = m_interestCallbacks.find_exact (*name);
@@ -196,6 +196,7 @@ CcnxWrapper::OnContentObject (const Ptr<const ndn::ContentObject> &contentObject
                               Ptr<Packet> payload)
 {
   ndn::App::OnContentObject (contentObject, payload);
+  NS_LOG_DEBUG ("<< D " << contentObject->GetName ());
 
   CcnxFilterEntryContainer<RawDataCallback>::iterator entry = m_dataCallbacks.longest_prefix_match (contentObject->GetName ());
   if (entry == m_dataCallbacks.end ())

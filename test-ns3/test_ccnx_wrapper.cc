@@ -34,19 +34,28 @@ using boost::test_tools::output_test_stream;
 
 #include "sync-ccnx-wrapper.h"
 
+#include "sync-log.h"
+
 using namespace Sync;
 using namespace std;
 using namespace boost;
 using namespace ns3;
 
+INIT_LOGGER ("Test.CcnxWrapper");
 
 string echoStr = "";
 
 void echo(string str) {
+  _LOG_DEBUG ("<< I " << str);
   echoStr = str;
 }
 
 struct TestStruct {
+  TestStruct ()
+    : num (0)
+  {
+  }
+  
   string s_str1, s_str2;
   void set(string str1, string str2) {
     s_str1 = str1;
@@ -55,8 +64,10 @@ struct TestStruct {
   int * num;
   int n;
 
-  void rawSet(string str1, const char *buf, size_t len) {
-    std::cout << "In rawSet" << std::endl;
+  void rawSet(string str1, const char *buf, size_t len)
+  {
+    // std::cout << "In rawSet" << std::endl;
+    _LOG_DEBUG ("In rawSet");
     s_str1 = str1;
 
     n = len / 4; 
@@ -66,30 +77,51 @@ struct TestStruct {
 };
 
 
-class CcnxWrapperTest
+class WrapperFixture
 {
 public:
   void
   step1 ()
   {
-    globalFunc = echo;
-    memberFunc = bind (&TestStruct::set, &foo, _1, _2);
-    rawFunc = bind (&TestStruct::rawSet, &foo, _1, _2, _3);
+    Config::SetDefault ("ns3::ndn::ForwardingStrategy::CacheUnsolicitedData", BooleanValue (true));
+    
+    Ptr<Node> node = CreateObject<Node> ();
+    ndn::StackHelper ndn;
+    ndn.Install (node);
 
-    prefix = "/ucla.edu";
-    ha.setInterestFilter(prefix, globalFunc);
+    ha = CreateObject<CcnxWrapper> ();
+    hb = CreateObject<CcnxWrapper> ();
 
-    Simulator::Schedule (Seconds (0.01), &CcnxWrapperTest::step2, this);
+    node->AddApplication (ha);
+    node->AddApplication (hb);
+
+    Simulator::Schedule (Seconds (1.0), &WrapperFixture::step1_5, this);
+    
+    Simulator::Stop (Seconds (20.0));
+    Simulator::Run ();
+    Simulator::Destroy ();
   }
 
   void
+  step1_5 ()
+  {
+    globalFunc = echo;
+
+    prefix = "/ucla.edu";
+    ha->setInterestFilter (prefix, globalFunc);
+
+    Simulator::Schedule (Seconds (0.01), &WrapperFixture::step2, this);
+  }
+  
+  void
   step2 ()
   {
+    memberFunc = bind (&TestStruct::set, &foo, _1, _2);
     interest = "/ucla.edu/0";
-    hb.sendInterestForString(interest, memberFunc);
+    hb->sendInterestForString (interest, memberFunc);
 
     // give time for ndnSIM to react
-    Simulator::Schedule (Seconds (1.005), &CcnxWrapperTest::step3, this);
+    Simulator::Schedule (Seconds (1.005), &WrapperFixture::step3, this);
   }
 
   void
@@ -99,12 +131,12 @@ public:
 
     name = "/ucla.edu/0";
     data = "random bits: !#$!@#$!";
-    ha.publishStringData(name, data, 5);
+    ha->publishStringData(name, data, 5);
 
-    hb.sendInterestForString(interest, memberFunc);
+    hb->sendInterestForString(interest, memberFunc);
 
     // give time for ndnSIM to react
-    Simulator::Schedule (Seconds (0.005), &CcnxWrapperTest::step4, this);
+    Simulator::Schedule (Seconds (0.005), &WrapperFixture::step4, this);
   }
 
   void
@@ -114,25 +146,31 @@ public:
     BOOST_CHECK_EQUAL(foo.s_str2, data);
 
     rawDataName = "/ucla.edu/1";
-    ha.publishRawData(rawDataName, (const char *)num, sizeof(num), 30);
-    hb.sendInterest(rawDataName, rawFunc);
+    ha->publishRawData(rawDataName, (const char *)num, sizeof(num), 30);
+    rawFunc = bind (&TestStruct::rawSet, &foo, _1, _2, _3);
+    hb->sendInterest(rawDataName, rawFunc);
 
-    // give time for ndnSIM to react
-    Simulator::Schedule (Seconds (0.005), &CcnxWrapperTest::step5, this);
+    // // give time for ndnSIM to react
+    Simulator::Schedule (Seconds (0.005), &WrapperFixture::step5, this);
   }
 
   void
   step5 ()
   {
     BOOST_CHECK_EQUAL(foo.s_str1, rawDataName);
-    for (int i = 0; i < 5; i++) {
-      BOOST_CHECK(foo.num[i] == num[i]);
-    }
+    BOOST_CHECK_NE (foo.num, (int *)0);
+    if (foo.num)
+      {
+        for (int i = 0; i < 5; i++)
+          {
+            BOOST_CHECK(foo.num[i] == num[i]);
+          }
+      }
   }
   
 private:
-  CcnxWrapper ha;
-  CcnxWrapper hb;  
+  Ptr<CcnxWrapper> ha;
+  Ptr<CcnxWrapper> hb;  
 
   TestStruct foo;
 
@@ -150,11 +188,13 @@ private:
   const static int num [5];
 };
 
-int CcnxWrapperTest::num [] = {0, 1, 2, 3, 4};
+int WrapperFixture::num [] = {0, 1, 2, 3, 4};
 
+BOOST_FIXTURE_TEST_SUITE( TestCcnxWrapper, WrapperFixture )
 
-boost::unit_test::test_suite *suite = BOOST_TEST_SUITE("TestCcnxWrapper");
-// BOOST_AUTO_TEST_SUITE_END()
+BOOST_AUTO_TEST_CASE( test_case1 )
+{
+  step1 ();
+}
 
-boost::shared_ptr<CcnxWrapperTest> instance( new CcnxWrapperTest );
-suite->add( BOOST_CLASS_TEST_CASE (&CcnxWrapperTest::step1, instance) );
+BOOST_AUTO_TEST_SUITE_END()
