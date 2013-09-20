@@ -17,7 +17,8 @@
  *
  * Author: Zhenkai Zhu <zhenkai@cs.ucla.edu>
  *         Chaoyi Bian <bcy@pku.edu.cn>
- *	   Alexander Afanasyev <alexander.afanasyev@ucla.edu>
+ *	       Alexander Afanasyev <alexander.afanasyev@ucla.edu>
+ *         Ilya Moiseenko <iliamo@ucla.edu>
  */
 
 #include "sync-ccnx-wrapper.h"
@@ -31,8 +32,6 @@ namespace ll = boost::lambda;
 
 #include <ns3/packet.h>
 
-#include <ns3/ndn-interest.h>
-#include <ns3/ndn-content-object.h>
 #include <ns3/ndn-face.h>
 #include <ns3/ndn-fib.h>
 
@@ -71,23 +70,15 @@ CcnxWrapper::StopApplication ()
 int
 CcnxWrapper::publishRawData (const std::string &name, const char *buf, size_t len, int freshness)
 {
-  // NS_LOG_INFO ("Requesting Interest: \n" << interestHeader);
   _LOG_INFO (">> publishRawData " << name);
-
-  static ndn::ContentObjectTail trailer;
   
-  ndn::ContentObject data;
-  data.SetName (name);
-  data.SetFreshness (Seconds (freshness));
+  Ptr<ndn::Data> data = Create<ndn::Data> (Create<Packet> (reinterpret_cast<const uint8_t*> (buf), len));
+  Ptr<ndn::Name> dataName = Create<ndn::Name> (name);
+  data->SetName (dataName);
+  data->SetFreshness (Seconds (freshness));
 
-  Ptr<Packet> packet = Create<Packet> (reinterpret_cast<const uint8_t*> (buf), len);
-  // packet->AddPacketTag (CreateObject<TypeTag> (TypeTag::DATA));
-  packet->AddHeader (data);
-  packet->AddTrailer (trailer);
-
-  m_protocolHandler (packet);
-
-  m_transmittedContentObjects (&data, packet, this, m_face);
+  m_face->ReceiveData (data);
+  m_transmittedDatas (data, this, m_face);
 
   return 0;
 }
@@ -107,20 +98,13 @@ CcnxWrapper::sendInterestForString (const std::string &strInterest, const String
 
 int CcnxWrapper::sendInterest (const string &strInterest, const RawDataCallback &rawDataCallback)
 {
-  // NS_LOG_INFO ("Requesting Interest: \n" << interestHeader);
-  _LOG_INFO (">> I " << strInterest);
+  _LOG_INFO (">> Requesting Interest: " << strInterest);
   Ptr<ndn::Name> name = Create<ndn::Name> (strInterest);
 
-  ndn::Interest interestHeader;
-  interestHeader.SetNonce            (m_rand.GetValue ());
-  interestHeader.SetName             (*name);
-  interestHeader.SetInterestLifetime (Seconds (9.9)); // really long-lived interests
-
-  Ptr<Packet> packet = Create<Packet> ();
-  // packet->AddPacketTag (CreateObject<TypeTag> (TypeTag::INTEREST));
-  packet->AddHeader (interestHeader);
-
-  // NS_LOG_DEBUG (interestHeader);
+  Ptr<ndn::Interest> interest = Create<ndn::Interest> ();
+  interest->SetNonce            (m_rand.GetValue ());
+  interest->SetName             (*name);
+  interest->SetInterestLifetime (Seconds (9.9)); // really long-lived interests
   
   // Record the callback
   CcnxFilterEntryContainer<RawDataCallback>::iterator entry = m_dataCallbacks.find_exact (*name);
@@ -133,15 +117,15 @@ int CcnxWrapper::sendInterest (const string &strInterest, const RawDataCallback 
     }
   entry->payload ()->AddCallback (rawDataCallback);
 
-  m_protocolHandler (packet);
-  m_transmittedInterests (&interestHeader, this, m_face);
+  m_transmittedInterests (interest, this, m_face);
+  m_face->ReceiveInterest (interest);
   
   return 0;
 }
 
 int CcnxWrapper::setInterestFilter (const string &prefix, const InterestCallback &interestCallback)
 {
-  NS_LOG_DEBUG ("== setInterestFilter " << prefix << " (" << GetNode ()->GetId () << ")");
+  //NS_LOG_INFO ("== setInterestFilter " << prefix << " (" << GetNode ()->GetId () << ")");
   Ptr<ndn::Name> name = Create<ndn::Name> (prefix);
 
   CcnxFilterEntryContainer<InterestCallback>::iterator entry = m_interestCallbacks.find_exact (*name);
@@ -176,9 +160,9 @@ CcnxWrapper::clearInterestFilter (const std::string &prefix)
 }
 
 void
-CcnxWrapper::OnInterest (const Ptr<const ndn::Interest> &interest, Ptr<Packet> packet)
+CcnxWrapper::OnInterest (ns3::Ptr<const ndn::Interest> interest)
 {
-  ndn::App::OnInterest (interest, packet);
+  ndn::App::OnInterest (interest);
 
   // the app cannot set several filters for the same prefix
   CcnxFilterEntryContainer<InterestCallback>::iterator entry = m_interestCallbacks.longest_prefix_match (interest->GetName ());
@@ -192,11 +176,10 @@ CcnxWrapper::OnInterest (const Ptr<const ndn::Interest> &interest, Ptr<Packet> p
 }
 
 void
-CcnxWrapper::OnContentObject (const Ptr<const ndn::ContentObject> &contentObject,
-                              Ptr<Packet> payload)
+CcnxWrapper::OnData (ns3::Ptr<const ndn::Data> contentObject)
 {
-  ndn::App::OnContentObject (contentObject, payload);
-  NS_LOG_DEBUG ("<< D " << contentObject->GetName ());
+  ndn::App::OnData (contentObject);
+  //NS_LOG_DEBUG ("<< D " << contentObject->GetName ());
 
   CcnxFilterEntryContainer<RawDataCallback>::iterator entry = m_dataCallbacks.longest_prefix_match (contentObject->GetName ());
   if (entry == m_dataCallbacks.end ())
@@ -208,7 +191,7 @@ CcnxWrapper::OnContentObject (const Ptr<const ndn::ContentObject> &contentObject
   while (entry != m_dataCallbacks.end ())
     {
       ostringstream content;
-      payload->CopyData (&content, payload->GetSize ());
+      contentObject->GetPayload()->CopyData (&content, contentObject->GetPayload()->GetSize ());
   
       entry->payload ()->m_callback (lexical_cast<string> (contentObject->GetName ()), content.str ().c_str (), content.str ().size ());
   

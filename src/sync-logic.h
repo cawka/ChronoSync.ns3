@@ -35,18 +35,15 @@
 #include "sync-full-state.h"
 #include "sync-std-name-info.h"
 #include "sync-scheduler.h"
-
 #include "sync-diff-state-container.h"
+
+#include <ns3/application.h>
+#include <ns3/random-variable.h>
 
 #ifdef _DEBUG
 #ifdef HAVE_LOG4CXX
 #include <log4cxx/logger.h>
 #endif
-#endif
-
-#ifdef NS3_MODULE
-#include <ns3/application.h>
-#include <ns3/random-variable.h>
 #endif
 
 namespace Sync {
@@ -64,9 +61,7 @@ struct MissingDataInfo {
  */
 
 class SyncLogic
-#ifdef NS3_MODULE
   : public ns3::Application
-#endif
 {
 public:
   //typedef boost::function< void ( const std::string &/*prefix*/, const SeqNo &/*newSeq*/, const SeqNo &/*oldSeq*/ ) > LogicUpdateCallback;
@@ -89,8 +84,11 @@ public:
   SyncLogic (const std::string &syncPrefix,
              LogicPerBranchCallback onUpdateBranch);
 
+  SyncLogic ();
   ~SyncLogic ();
 
+  static ns3::TypeId GetTypeId ();
+  
   /**
    * a wrapper for the same func in SyncApp
    */
@@ -115,19 +113,15 @@ public:
    */
   void remove (const std::string &prefix);
 
-  std::string
-  getRootDigest();
 
 #ifdef _DEBUG
   Scheduler &
   getScheduler () { return m_scheduler; }
 #endif
 
-#ifdef NS3_MODULE
 public:
   virtual void StartApplication ();
   virtual void StopApplication ();
-#endif
   
   void stop();
 
@@ -199,24 +193,12 @@ private:
   static const int m_defaultRecoveryRetransmitInterval = 200; // milliseconds
   uint32_t m_recoveryRetransmissionInterval; // milliseconds
   
-#ifndef NS3_MODULE
-  boost::mt19937 m_randomGenerator;
-  boost::variate_generator<boost::mt19937&, boost::uniform_int<> > m_rangeUniformRandom;
-  boost::variate_generator<boost::mt19937&, boost::uniform_int<> > m_reexpressionJitter;
-#else
   ns3::UniformVariable m_rangeUniformRandom;
   ns3::UniformVariable m_reexpressionJitter;
-#endif
 
   static const int m_unknownDigestStoreTime = 10; // seconds
-#ifdef NS3_MODULE
   static const int m_syncResponseFreshness = 100; // milliseconds
   static const int m_syncInterestReexpress = 10; // seconds
-  // don't forget to adjust value in SyncCcnxWrapper
-#else
-  static const int m_syncResponseFreshness = 4;
-  static const int m_syncInterestReexpress = 4;
-#endif
 
   enum EventLabels
     {

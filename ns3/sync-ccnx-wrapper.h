@@ -17,7 +17,8 @@
  *
  * Author: Zhenkai Zhu <zhenkai@cs.ucla.edu>
  *         Chaoyi Bian <bcy@pku.edu.cn>
- *	   Alexander Afanasyev <alexander.afanasyev@ucla.edu>
+ *	       Alexander Afanasyev <alexander.afanasyev@ucla.edu>
+ *         Ilya Moiseenko <iliamo@ucla.edu>
  */
 
 #ifndef SYNC_CCNX_WRAPPER_H
@@ -32,6 +33,8 @@
 #include <ns3/random-variable.h>
 #include <ns3/ndn-app.h>
 #include <ns3/ndn-name.h>
+#include <ns3/ndn-data.h>
+#include <ns3/ndn-interest.h>
 
 #include <ns3/ndnSIM/utils/trie/trie-with-policy.h>
 #include <ns3/ndnSIM/utils/trie/counting-policy.h>
@@ -154,13 +157,20 @@ public:
   publishRawData (const std::string &name, const char *buf, size_t len, int freshness);
   
   // from ndn::App
+  
+  /**
+   * @brief Method that will be called every time new Interest arrives
+   * @param interest - NDN Interest
+   */
   virtual void
-  OnInterest (const ns3::Ptr<const ns3::ndn::Interest> &interest, ns3::Ptr<ns3::Packet> packet);
+  OnInterest (ns3::Ptr<const ns3::ndn::Interest> interest);
  
+  /**
+   * @brief Method that will be called every time new Data arrives
+   * @param contentObject - NDN Data
+   */
   virtual void
-  OnContentObject (const ns3::Ptr<const ns3::ndn::ContentObject> &contentObject,
-                   ns3::Ptr<ns3::Packet> payload);
-
+  OnData (ns3::Ptr<const ns3::ndn::Data> contentObject);
 
 public:
   // inherited from Application base class.

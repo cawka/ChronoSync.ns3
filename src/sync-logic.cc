@@ -17,12 +17,8 @@
  *
  * Author: Zhenkai Zhu <zhenkai@cs.ucla.edu>
  *         Chaoyi Bian <bcy@pku.edu.cn>
- *	   Alexander Afanasyev <alexander.afanasyev@ucla.edu>
+ *	       Alexander Afanasyev <alexander.afanasyev@ucla.edu>
  */
-
-#ifdef NS3_MODULE
-// #include <ns3/ccnx.h>
-#endif
 
 #include "sync-logic.h"
 #include "sync-diff-leaf.h"
@@ -38,6 +34,7 @@
 using namespace std;
 using namespace boost;
 
+
 INIT_LOGGER ("SyncLogic");
 
 #ifdef NS3_MODULE
@@ -51,7 +48,6 @@ INIT_LOGGER ("SyncLogic");
 
 #define TIME_MILLISECONDS_WITH_JITTER(ms) \
   (TIME_MILLISECONDS (ms) + TIME_MILLISECONDS (GET_RANDOM (m_reexpressionJitter)))
-
 
 namespace Sync
 {
@@ -67,25 +63,9 @@ SyncLogic::SyncLogic (const std::string &syncPrefix,
   , m_perBranch (false)
   , m_ccnxHandle(new CcnxWrapper ())
   , m_recoveryRetransmissionInterval (m_defaultRecoveryRetransmitInterval)
-#ifndef NS3_MODULE
-  , m_randomGenerator (static_cast<unsigned int> (std::time (0)))
-  , m_rangeUniformRandom (m_randomGenerator, uniform_int<> (200,1000))
-  , m_reexpressionJitter (m_randomGenerator, uniform_int<> (100,500))
-#else
   , m_rangeUniformRandom (200,1000)
   , m_reexpressionJitter (10,500)
-#endif
-{ 
-#ifndef NS3_MODULE
-  // In NS3 module these functions are moved to StartApplication method
-  
-  m_ccnxHandle->setInterestFilter (m_syncPrefix,
-                                   bind (&SyncLogic::respondSyncInterest, this, _1));
-
-  m_scheduler.schedule (TIME_SECONDS (0), // no need to add jitter
-                        bind (&SyncLogic::sendSyncInterest, this),
-                        REEXPRESSING_INTEREST);
-#endif
+{
 }
 
 SyncLogic::SyncLogic (const std::string &syncPrefix,
@@ -97,25 +77,14 @@ SyncLogic::SyncLogic (const std::string &syncPrefix,
   , m_perBranch(true)
   , m_ccnxHandle(new CcnxWrapper())
   , m_recoveryRetransmissionInterval (m_defaultRecoveryRetransmitInterval)
-#ifndef NS3_MODULE
-  , m_randomGenerator (static_cast<unsigned int> (std::time (0)))
-  , m_rangeUniformRandom (m_randomGenerator, uniform_int<> (200,1000))
-  , m_reexpressionJitter (m_randomGenerator, uniform_int<> (100,500))
-#else
   , m_rangeUniformRandom (200,1000)
   , m_reexpressionJitter (10,500)
-#endif
-{ 
-#ifndef NS3_MODULE
-  // In NS3 module these functions are moved to StartApplication method
-  
-  m_ccnxHandle->setInterestFilter (m_syncPrefix,
-                                   bind (&SyncLogic::respondSyncInterest, this, _1));
+{
+}
 
-  m_scheduler.schedule (TIME_SECONDS (0), // no need to add jitter
-                        bind (&SyncLogic::sendSyncInterest, this),
-                        REEXPRESSING_INTEREST);
-#endif
+SyncLogic::SyncLogic ()
+: m_syncInterestTable (TIME_SECONDS (0))
+{
 }
 
 SyncLogic::~SyncLogic ()
@@ -123,7 +92,17 @@ SyncLogic::~SyncLogic ()
   m_ccnxHandle->clearInterestFilter (m_syncPrefix);
 }
 
-#ifdef NS3_MODULE
+ns3::TypeId
+SyncLogic::GetTypeId (void)
+{
+  static ns3::TypeId tid = ns3::TypeId ("SyncLogic")
+    .SetParent<ns3::Application> ()
+    .AddConstructor<SyncLogic>()
+    ;
+  
+  return tid;
+}
+
 void
 SyncLogic::StartApplication ()
 {
@@ -146,7 +125,6 @@ SyncLogic::StopApplication ()
   m_scheduler.cancel (REEXPRESSING_INTEREST);
   m_scheduler.cancel (DELAYED_INTEREST_PROCESSING);
 }
-#endif
 
 void
 SyncLogic::stop()
@@ -185,7 +163,7 @@ SyncLogic::convertNameToDigestAndType (const std::string &name)
   istringstream is (hash);
   is >> *digest;
 
-  return make_tuple (digest, interestType);
+  return boost::make_tuple (digest, interestType);
 }
 
 void
@@ -193,7 +171,7 @@ SyncLogic::respondSyncInterest (const string &name)
 {
   try
     {
-      _LOG_TRACE ("<< I " << name);
+      _LOG_INFO ("<< I " << name);
 
       DigestConstPtr digest;
       string type;
@@ -210,7 +188,7 @@ SyncLogic::respondSyncInterest (const string &name)
     }
   catch (Error::DigestCalculationError &e)
     {
-      _LOG_TRACE ("Something fishy happened...");
+      _LOG_INFO ("Something fishy happened...");
       // log error. ignoring it for now, later we should log it
       return ;
     }
@@ -221,7 +199,7 @@ SyncLogic::respondSyncData (const std::string &name, const char *wireData, size_
 {
   try
     {
-      _LOG_TRACE ("<< D " << name);
+      _LOG_INFO ("<< D " << name);
   
       DigestConstPtr digest;
       string type;
@@ -240,7 +218,7 @@ SyncLogic::respondSyncData (const std::string &name, const char *wireData, size_
     }
   catch (Error::DigestCalculationError &e)
     {
-      _LOG_TRACE ("Something fishy happened...");
+      _LOG_INFO ("Something fishy happened...");
       // log error. ignoring it for now, later we should log it
       return;
     }
@@ -250,6 +228,7 @@ SyncLogic::respondSyncData (const std::string &name, const char *wireData, size_
 void
 SyncLogic::processSyncInterest (const std::string &name, DigestConstPtr digest, bool timedProcessing/*=false*/)
 {
+  _LOG_INFO ("Process Sync Interest: " << name);
   DigestConstPtr rootDigest;
   {
     recursive_mutex::scoped_lock lock (m_stateMutex);
@@ -271,7 +250,7 @@ SyncLogic::processSyncInterest (const std::string &name, DigestConstPtr digest, 
 
   if (*rootDigest == *digest)
     {
-      _LOG_TRACE ("processSyncInterest (): Same state. Adding to PIT");
+      _LOG_INFO ("processSyncInterest (): Same state. Adding to PIT");
       m_syncInterestTable.insert (digest, name, false);
       return;
     }
@@ -304,7 +283,7 @@ SyncLogic::processSyncInterest (const std::string &name, DigestConstPtr digest, 
     }
   else
     {
-      _LOG_TRACE ("                                                      (timed processing)");
+      _LOG_INFO ("                                                      (timed processing)");
       
       m_recoveryRetransmissionInterval = m_defaultRecoveryRetransmitInterval;
       sendSyncRecoveryInterests (digest);
@@ -314,6 +293,8 @@ SyncLogic::processSyncInterest (const std::string &name, DigestConstPtr digest, 
 void
 SyncLogic::processSyncData (const std::string &name, DigestConstPtr digest, const char *wireData, size_t len)
 {
+  _LOG_INFO("It is processSyncData");
+  
   DiffStatePtr diffLog = make_shared<DiffState> ();
   bool ownInterestSatisfied = false;
   
@@ -409,7 +390,7 @@ SyncLogic::processSyncData (const std::string &name, DigestConstPtr digest, cons
     }
   catch (Error::SyncStateMsgDecodingFailure &e)
     {
-      _LOG_TRACE ("Something really fishy happened during state decoding " <<
+      _LOG_INFO ("Something really fishy happened during state decoding " <<
                   diagnostic_information (e));
       diffLog.reset ();
       // don't do anything
@@ -439,7 +420,7 @@ SyncLogic::processSyncRecoveryInterest (const std::string &name, DigestConstPtr 
 
   if (stateInDiffLog == m_log.end ())
     {
-      _LOG_TRACE ("Could not find " << *digest << " in digest log");
+      _LOG_INFO ("Could not find " << *digest << " in digest log");
       return;
     }
 
@@ -473,12 +454,12 @@ SyncLogic::satisfyPendingSyncInterests (DiffStateConstPtr diffLog)
 
           if (!interest.m_unknown)
             {
-              _LOG_TRACE (">> D " << interest.m_name);
+              _LOG_INFO (">> D " << interest.m_name);
               sendSyncData (interest.m_name, interest.m_digest, diffLog);
             }
           else
             {
-              _LOG_TRACE (">> D (unknown)" << interest.m_name);
+              _LOG_INFO (">> D (unknown)" << interest.m_name);
               sendSyncData (interest.m_name, interest.m_digest, fullStateLog);
             }
           counter ++;
@@ -513,12 +494,12 @@ SyncLogic::addLocalNames (const string &prefix, uint32_t session, uint32_t seq)
     recursive_mutex::scoped_lock lock (m_stateMutex);
     NameInfoConstPtr info = StdNameInfo::FindOrCreate(prefix);
 
-    _LOG_DEBUG ("addLocalNames (): old state " << *m_state->getDigest ());
+    _LOG_INFO ("addLocalNames (): old state " << *m_state->getDigest ());
 
     SeqNo seqN (session, seq);
     m_state->update(info, seqN);
 
-    _LOG_DEBUG ("addLocalNames (): new state " << *m_state->getDigest ());
+    _LOG_INFO ("addLocalNames (): new state " << *m_state->getDigest ());
     
     diff = make_shared<DiffState>();
     diff->update(info, seqN);
@@ -570,7 +551,7 @@ SyncLogic::sendSyncInterest ()
 
     os << m_syncPrefix << "/" << *m_state->getDigest();
     m_outstandingInterestName = os.str ();
-    _LOG_TRACE (">> I " << os.str ());
+    _LOG_INFO (">> I " << os.str ());
   }
 
   m_scheduler.cancel (REEXPRESSING_INTEREST);
@@ -587,7 +568,7 @@ SyncLogic::sendSyncRecoveryInterests (DigestConstPtr digest)
 {
   ostringstream os;
   os << m_syncPrefix << "/recovery/" << *digest;
-  _LOG_TRACE (">> I " << os.str ());
+  _LOG_INFO (">> I " << os.str ());
 
   TimeDuration nextRetransmission = TIME_MILLISECONDS_WITH_JITTER (m_recoveryRetransmissionInterval);
   m_recoveryRetransmissionInterval <<= 1;
@@ -618,7 +599,7 @@ SyncLogic::sendSyncData (const std::string &name, DigestConstPtr digest, StateCo
 void
 SyncLogic::sendSyncData (const std::string &name, DigestConstPtr digest, SyncStateMsg &ssm)
 {
-  _LOG_TRACE (">> D " << name);
+  _LOG_INFO (">> D " << name);
   int size = ssm.ByteSize();
   char *wireData = new char[size];
   ssm.SerializeToArray(wireData, size);
@@ -637,7 +618,7 @@ SyncLogic::sendSyncData (const std::string &name, DigestConstPtr digest, SyncSta
   
   if (satisfiedOwnInterest)
     {
-      _LOG_TRACE ("Satisfied our own Interest. Re-expressing (hopefully with a new digest)");
+      _LOG_INFO ("Satisfied our own Interest. Re-expressing (hopefully with a new digest)");
       
       m_scheduler.cancel (REEXPRESSING_INTEREST);
       m_scheduler.schedule (TIME_SECONDS_WITH_JITTER (0),
@@ -692,5 +673,6 @@ SyncLogic::getBranchPrefixes() const
 
   return m;
 }
+
 
 }
